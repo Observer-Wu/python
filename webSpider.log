@@ -1,0 +1,3 @@
+1、整个爬虫需要beautifulsoup4，鉴于homebrew上面没有，就只好下载了，然后使用方式为：直接将bs4的包拷到了工程本地
+2、beautifulsoup需要解析器，我选择的是lxml（也是官方推荐的）
+3、homebrew上面也没有lxml，所以也只好去下载，然后安装，lxml也有依赖的库，但是使用自带的setup.py可以自动下载，所以准备工作应该就到这里就结束了
