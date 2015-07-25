@@ -1,6 +1,8 @@
+#/usr/bin/python
 #_*_ coding: utf-8 _*_
 #this file is designed to grab some infomaiton from http://xueqiu.com
 
+import os
 import re
 import sys
 import time
@@ -8,6 +10,10 @@ import json
 import string
 import random
 import requests
+
+DAY = 1 * 24 * 60 * 60
+NOW = time.time()
+PWD = os.getcwd()
 
 class web_spider:
     def __init__(self):
@@ -24,7 +30,7 @@ class web_spider:
 
     def loadCode(self):
         stocks = []
-        with open("stock_name_codes.txt") as fp:
+        with open(os.path.join(PWD, "stock_name_codes.txt")) as fp:
             line = fp.readline()
             while line:
                 stock = line.split("\t")
@@ -51,9 +57,9 @@ class web_spider:
                 for json_comment in json_comments:
                     comment_name = json_comment['user']['screen_name']
                     commented_name = json_comment['reply_screenName']
-                    content = json_comment['text']
+                    content = json_comment['text'].replace('&nbsp;', ' ').replace('<br/>', '\n')
                     donate = json_comment['donate_snowcoin']
-                    datetime = json_comment['created_at']
+                    datetime = json_comment['created_at'] / 1000
                     marvellous = 'true' if donate > 0 else 'false'
                     comment = {
                         'comment_name': comment_name,
@@ -77,11 +83,13 @@ class web_spider:
                 name = json_detail['user']['screen_name']
                 userid = json_detail['user_id']
                 topic = json_detail['title']
-                content = json_detail['text']
+                content = json_detail['text'].replace('&nbsp;', ' ').replace('<br/>', '\n')
                 retweet_count = json_detail['retweet_count'] #转发
                 reply_count = json_detail['reply_count']
                 donate = json_detail['donate_snowcoin']
                 datetime = json_detail['created_at'] / 1000	
+                if NOW - datetime > DAY:
+                    return {'details': details, 'expired': True}
                 source = json_detail['source']
                 comment = self.scratch_comment(json_detail['id'], reply_count/20+1) if reply_count > 0 else None
                 detail = {
@@ -99,84 +107,100 @@ class web_spider:
                 details.append(detail)
             except Exception as e:
                 print 'Exception occured when scratch detail:%s, error:%s' % (json_detail, e)
-        return details
+        return {'details': details, 'expired': False}
 
     #scratch the discussion section, where the source = user
     def scratch_discussion(self, symbol):
         try:
-            url = 'http://xueqiu.com/statuses/search.json'
-            params = {
-                'count': '15',
-                'comment': '0',
-                'symbol': symbol,
-                'hl': '0',
-                'source': 'user',
-                'page': '1',
-                'sort': 'time',
-                '_': repr(int(time.time()*1000))
-            }
-            r = self.s.get(url, params = params, headers = self.header)
-            if r.status_code != 200:
-                return
+            page = 1
+            while True:
+                url = 'http://xueqiu.com/statuses/search.json'
+                params = {
+                    'count': '15',
+                    'comment': '0',
+                    'symbol': symbol,
+                    'hl': '0',
+                    'source': 'user',
+                    'page': page,
+                    'sort': 'time',
+                    '_': repr(int(time.time()*1000))
+                }
+                r = self.s.get(url, params = params, headers = self.header)
+                if r.status_code != 200:
+                    return
+                details = self.scratch_details(r.text)
+                if details['expired'] or len(details['details']) < 15:
+                    return
         except Exception as e:
             print 'Exception occured when connect to the discussion page of %s, error:%s' % (symbol, e)
-        return self.scratch_details(r.text)
 
     #scratch the trade section, where the source = trans
     def scratch_trade(self, symbol):
         try:
-            url = 'http://xueqiu.com/statuses/search.json'
-            params = {
-                'count': '15',
-                'comment': '0',
-                'symbol': symbol,
-                'hl': '0',
-                'source': 'trans',
-                'page': '1',
-                '_': repr(int(time.time()*1000))
-            } 
-            r = self.s.get(url, params = params, headers = self.header)
-            if r.status_code != 200:
-                return
+            page = 1
+            while True:
+                url = 'http://xueqiu.com/statuses/search.json'
+                params = {
+                    'count': '15',
+                    'comment': '0',
+                    'symbol': symbol,
+                    'hl': '0',
+                    'source': 'trans',
+                    'page': page,
+                    '_': repr(int(time.time()*1000))
+                } 
+                r = self.s.get(url, params = params, headers = self.header)
+                if r.status_code != 200:
+                    return
+                details = self.scratch_details(r.text)
+                if details['expired'] or len(details['details']) < 15:
+                    return
         except Exception as e:
             print 'Exception occured when connect to the trade page of %s, error:%s' % (symbol, e)
-        return self.scratch_details(r.text) 
 
     #scratch the news section
     def scratch_news(self, symbol):
         try:
-            url = 'http://xueqiu.com/statuses/stock_timeline.json'
-            params = {
-                'symbol_id': symbol,
-                'count': '15',
-                'source': '自选股新闻',
-                'page': '1',
-                '_': repr(int(time.time()*1000))
-            } 
-            r = self.s.get(url, params = params, headers = self.header)
-            if r.status_code !=200:
-                return	
+            page = 1
+            while True:
+                url = 'http://xueqiu.com/statuses/stock_timeline.json'
+                params = {
+                    'symbol_id': symbol,
+                    'count': '15',
+                    'source': '自选股新闻',
+                    'page': page,
+                    '_': repr(int(time.time()*1000))
+                } 
+                r = self.s.get(url, params = params, headers = self.header)
+                if r.status_code !=200:
+                    return	
+                details = self.scratch_details(r.text)
+                if details['expired'] or len(details['details']) < 15:
+                    return
         except Exception as e:
             print 'Exception occured when connect to the news page of %s, error:%s' % (symbol, e)
-        return self.scratch_details(r.text)
 
     #scratch the notice section
     def scratch_notice(self, symbol):
         try:
-            url = 'http://xueqiu.com/statuses/stock_timeline.json'
-            params = {
-                'symbol_id': symbol,
-                'count': '15',
-                'source': '公告',
-                'page': '1',
-                '_': repr(int(time.time()*1000))
-            }
-            r = self.s.get(url, params = params, headers = self.header)
-            if r.status_code != 200:
-                return
+            page = 1
+            while True:
+                url = 'http://xueqiu.com/statuses/stock_timeline.json'
+                params = {
+                    'symbol_id': symbol,
+                    'count': '15',
+                    'source': '公告',
+                    'page': page,
+                    '_': repr(int(time.time()*1000))
+                }
+                r = self.s.get(url, params = params, headers = self.header)
+                if r.status_code != 200:
+                    return
+                details = self.scratch_details(r.text)
+                if details['expired'] or len(details['details']) < 15:
+                    return
         except Exception as e:
             print 'Exception occured when connect to the notice page of %s, error:%s' % (symbol, e)
-        return self.scratch_details(r.text)
 
     #combine the code and it's stock exchange
     def symbol_trans(self, stock):
@@ -191,13 +215,14 @@ class web_spider:
 
     def scratch(self):
         #scratch the page
-        stocks = loadCode()
+        stocks = self.loadCode()
         for stock in stocks:
             try:
                 symbol = stock['code']
                 if symbol.startswith('8'):
                     continue
                 symbol = self.symbol_trans(symbol)
+                print symbol
                 self.scratch_discussion(symbol)	
                 self.scratch_trade(symbol)
                 self.scratch_news(symbol)
